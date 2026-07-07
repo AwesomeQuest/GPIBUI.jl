@@ -141,24 +141,6 @@ end
 
 function menubar()
 	if ig.BeginMenuBar()
-		if ig.BeginMenu("Timestamp Export Mode")
-			global timestamp_mode
-			selected::Int32 = @match timestamp_mode begin
-				:datetime => 1
-				:seconds => 2
-				:nanoseconds => 3
-				_ => -1
-			end
-
-			@c ig.RadioButton("DateTime Timestamps", &selected, 1)
-			@c ig.RadioButton("Seconds since start of capture", &selected, 2)
-			@c ig.RadioButton("Nanoseconds since start of capture", &selected, 3)
-
-			global timestamp_mode
-			timestamp_mode = [:datetime, :seconds, :nanoseconds][selected]
-			ig.EndMenu()
-		end
-
 		if ig.BeginMenu("Device Selection")
 			@cstatic instrs = String[] selected_keithley::Cint = 0 selected_spectra::Cint = 0 begin
 				if ig.Button("Refresh Devices")
@@ -194,6 +176,25 @@ function menubar()
 			end
 			ig.EndMenu()
 		end
+
+		if ig.BeginMenu("Timestamp Export Mode")
+			global timestamp_mode
+			selected::Int32 = @match timestamp_mode begin
+				:datetime => 1
+				:seconds => 2
+				:nanoseconds => 3
+				_ => -1
+			end
+
+			@c ig.RadioButton("DateTime Timestamps", &selected, 1)
+			@c ig.RadioButton("Seconds since start of capture", &selected, 2)
+			@c ig.RadioButton("Nanoseconds since start of capture", &selected, 3)
+
+			global timestamp_mode
+			timestamp_mode = [:datetime, :seconds, :nanoseconds][selected]
+			ig.EndMenu()
+		end
+
 
 		ig.EndMenuBar()
 	end
