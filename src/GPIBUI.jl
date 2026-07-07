@@ -173,6 +173,7 @@ function menubar()
 				@c ig.Combo("SpectraPro", &selected_spectra, instrs)
 			end
 		end
+		ig.TreePop()
 
 		ig.EndMenuBar()
 	end
