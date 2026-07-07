@@ -162,6 +162,7 @@ function menubar()
 		if ig.Button("Select Devices")
 			ig.Begin("Device Selector")
 			global RM
+			RM = ResourceManager()
 			instrs = find_resources(RM)
 			@cstatic selected_keithley = 0 selected_spectra = 0 begin
 				@c ig.Combo("Keithley", &selected_keithley, instrs)
