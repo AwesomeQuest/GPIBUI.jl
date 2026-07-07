@@ -160,23 +160,24 @@ function menubar()
 		end
 
 		if ig.BeginMenu("Device Selection")
-			global RM
-			instrs = nothing
-			try
-				instrs = find_resources(RM)
-			catch
-				RM = ResourceManager()
-				instrs = find_resources(RM)
-			end
-			ig.BeginGroup()
-			@cstatic selected_keithley::Cint = 0 selected_spectra::Cint = 0 begin
+			@cstatic instrs = String[] selected_keithley::Cint = 0 selected_spectra::Cint = 0 begin
+				if ig.Button("Refresh Devices")
+					global RM
+					RM = ResourceManager()
+					instrs = find_resources(RM)
+				end
 				@c ig.Combo("Keithley", &selected_keithley, instrs)
 				@c ig.Combo("SpectraPro", &selected_spectra, instrs)
 				if selected_keithley == selected_spectra
 					selected_spectra = (selected_spectra + 1) % (length(instrs)-1)
 				end
+				if ig.Button("Connect")
+					global Keithley
+					global Spectra
+					connect!(RM, Keithley, instrs[selected_keithley+1])
+					connect!(RM, Spectra, instrs[selected_spectra+1])
+				end
 			end
-			ig.EndGroup()
 			ig.EndMenu()
 		end
 
