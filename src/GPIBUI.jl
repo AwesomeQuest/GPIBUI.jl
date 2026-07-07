@@ -161,7 +161,7 @@ function menubar()
 
 		@cstatic show_device_selector = true begin
 			ig.Button("Select Devices") && (show_device_selector = !show_device_selector)
-			@c ig.Begin("Device Selector", &show_device_selector)
+			@c ig.Begin("Device Selector", &show_device_selector, ig.ImGuiWindowFlags_NoCollapse)
 			global RM
 			instrs = nothing
 			try
