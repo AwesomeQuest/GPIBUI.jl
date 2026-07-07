@@ -172,6 +172,9 @@ function menubar()
 			@cstatic selected_keithley::Cint = 0 selected_spectra::Cint = 0 begin
 				@c ig.Combo("Keithley", &selected_keithley, instrs)
 				@c ig.Combo("SpectraPro", &selected_spectra, instrs)
+				if selected_keithley == selected_spectra
+					selected_spectra = (selected_spectra + 1) % (length(instrs)-1)
+				end
 			end
 			ig.EndGroup()
 			ig.EndMenu()
