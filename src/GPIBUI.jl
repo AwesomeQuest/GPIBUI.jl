@@ -159,7 +159,7 @@ function menubar()
 			ig.EndMenu()
 		end
 
-		if ig.TreeNode("Device Selection")
+		if ig.BeginMenu("Device Selection")
 			global RM
 			instrs = nothing
 			try
@@ -168,11 +168,13 @@ function menubar()
 				RM = ResourceManager()
 				instrs = find_resources(RM)
 			end
+			ig.BeginGroup()
 			@cstatic selected_keithley::Cint = 0 selected_spectra::Cint = 0 begin
 				@c ig.Combo("Keithley", &selected_keithley, instrs)
 				@c ig.Combo("SpectraPro", &selected_spectra, instrs)
 			end
-			ig.TreePop()
+			ig.EndGroup()
+			ig.EndMenu()
 		end
 
 		ig.EndMenuBar()
