@@ -164,7 +164,7 @@ function menubar()
 			global RM
 			RM = ResourceManager()
 			instrs = find_resources(RM)
-			@cstatic selected_keithley = 0 selected_spectra = 0 begin
+			@cstatic selected_keithley::Cint = 0 selected_spectra::Cint = 0 begin
 				@c ig.Combo("Keithley", &selected_keithley, instrs)
 				@c ig.Combo("SpectraPro", &selected_spectra, instrs)
 			end
