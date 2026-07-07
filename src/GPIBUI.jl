@@ -172,8 +172,8 @@ function menubar()
 				@c ig.Combo("Keithley", &selected_keithley, instrs)
 				@c ig.Combo("SpectraPro", &selected_spectra, instrs)
 			end
+			ig.TreePop()
 		end
-		ig.TreePop()
 
 		ig.EndMenuBar()
 	end
