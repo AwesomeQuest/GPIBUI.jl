@@ -163,8 +163,13 @@ function menubar()
 			ig.Button("Select Devices") && (show_device_selector = !show_device_selector)
 			@c ig.Begin("Device Selector", &show_device_selector)
 			global RM
-			RM = ResourceManager()
-			instrs = find_resources(RM)
+			instrs = nothing
+			try
+				instrs = find_resources(RM)
+			catch
+				RM = ResourceManager()
+				instrs = find_resources(RM)
+			end
 			@cstatic selected_keithley::Cint = 0 selected_spectra::Cint = 0 begin
 				@c ig.Combo("Keithley", &selected_keithley, instrs)
 				@c ig.Combo("SpectraPro", &selected_spectra, instrs)
