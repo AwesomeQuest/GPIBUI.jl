@@ -171,24 +171,24 @@ function menubar()
 				if selected_keithley == selected_spectra
 					selected_spectra = (selected_spectra + 1) % (length(instrs)-1)
 				end
+				global RM
+				global Keithley
+				global Spectra
 				if ig.Button("Connect")
-					global RM
-					global Keithley
-					global Spectra
 					connect!(RM, Keithley, instrs[selected_keithley+1])
 					connect!(RM, Spectra, instrs[selected_spectra+1])
-					if Keithley.connected && Spectra.connected
+				end
+				if Keithley.connected && Spectra.connected
+					ig.SameLine()
+					ig.Text("Success!")
+				else
+					if !Keithley.connected
 						ig.SameLine()
-						ig.Text("Success!")
-					else
-						if !Keithley.connected
-							ig.SameLine()
-							ig.Text("Failed to connect Keithley")
-						end
-						if !Spectra.connected
-							ig.SameLine()
-							ig.Text("Failed to connect SpectraPro")
-						end
+						ig.Text("Failed to connect Keithley")
+					end
+					if !Spectra.connected
+						ig.SameLine()
+						ig.Text("Failed to connect SpectraPro")
 					end
 				end
 			end
