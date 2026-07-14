@@ -29,6 +29,5 @@ ModernGL = "1.1.8"
 NativeFileDialog = "0.2.1"
 TimesDates = "0.3.3"
 
-
 [apps.gpibui]
 julia_flags = ["--threads=2"]

@@ -1,63 +1,20 @@
 module GPIBUI
 
 
-using Match
-
-using ArgParse
-
-function parse_commandline()
-	s = ArgParseSettings()
-
-	@add_arg_table! s begin
-		"sleep_interupt_time"
-			help = "The time interval in milliseconds that the program " *
-					"sleeps for between taking samples. It might be more " *
-					"performant and accurate to set this value high but " *
-					"it also means that you can't cancel a measurement " *
-					"in less than `sleep_interupt_time` milliseconds"
-	end
-	parsed_args = parse_args(s) # the result is a Dict{String,Any}
-	# println("Parsed args:")
-	# for (key,val) in parsed_args
-	# 	println("  $key  =>  $(repr(val))")
-	# end
-	return parsed_args
-end
+include("args.jl")
 
 import CImGui as ig, ModernGL, GLFW
 import CImGui.CSyntax: @c, @cstatic
 import ImPlot
 
-global plotlock = ReentrantLock()
-global gpiblock = ReentrantLock()
-
-using NativeFileDialog, DelimitedFiles
+global plotlock::ReentrantLock = ReentrantLock()
+global gpiblock::ReentrantLock = ReentrantLock()
 
 include("BetterSleep.jl")
 using .BetterSleep
 import .BetterSleep: now
-using Dates, TimesDates
 
-function savetofile(times, currs, volts, timestamp_mode, filepath)
-	open(filepath, "w") do io
-		isempty(times) && return
-		time = copy(times)
-		if timestamp_mode === :datetime
-			timedatenow, nanonow = TimeDate(Dates.now()), BetterSleep.now()
-			synthetic_first_time = timedatenow - Nanosecond((nanonow - time[1]).ns)
-			time = [synthetic_first_time + Nanosecond((tt - time[1]).ns) for tt in time]
-			timeunit = "[DateTime]"
-		elseif timestamp_mode === :seconds
-			time = (time .- [time[1]]) .|> x->x.ns/1e9
-			timeunit = "[Seconds]"
-		else
-			time = time .|> x->x.ns
-			timeunit = "[Nanoseconds]"
-		end
-		writedlm(io, ["TimeStamp "*timeunit "Voltage [V]" "Current [A]"], ',')
-		writedlm(io, [time volts currs], ',')
-	end
-end
+include("save.jl")
 
 global sleep_interupt_interval::Nano = millis(100)
 
@@ -68,19 +25,59 @@ global Keithley::GenericInstrument = GenericInstrument()
 global Spectra::GenericInstrument = GenericInstrument()
 
 
+# Global System State
+const keithley_types = (
+	"MODEL 2400",
+	"MODEL 2470",
+)
+global selected_keithley_type::Int = 0
+
+global is_connected::Bool = false
+function nodeviceconnected()
+	@error "No Devices Selected. Use the device selection menu to select the devices."
+	return false
+end
+
+global spectra_is_read::Bool = false
+
+global iv_is_sweeping::Ref{Bool}	= Ref(false)
+global iv_cancel_sweep::Ref{Bool}	= Ref(false)
+
+global rt_is_monitoring::Ref{Bool}	= Ref(false)
+global rt_cancel_monitor::Ref{Bool}	= Ref(false)
+
+global rt_sample_period::Nano = millis(100)
+
+global event_list::Vector{String} = []
+
 # Can be :datetime, :seconds, or :nanoseconds
 global timestamp_mode::Symbol = :seconds
 
+# Global data for storage
+global iv_times::Vector{Nano}	 = []
+global iv_currs::Vector{Float64} = []
+global iv_volts::Vector{Float64} = []
+global iv_waves::Vector{Float64} = []
+
+global rt_times::Vector{Nano}	 = []
+global rt_currs::Vector{Float64} = []
+global rt_volts::Vector{Float64} = []
+global rt_waves::Vector{Float64} = []
 
 # Initialize Plot Axis Flags
 global xflags = ImPlot.ImPlotAxisFlags_None | ImPlot.ImPlotAxisFlags_AutoFit
 global yflags = ImPlot.ImPlotAxisFlags_None | ImPlot.ImPlotAxisFlags_AutoFit
 
 global WINSCALE::Float32 = 1.0
-global sidebarwidth = 100WINSCALE
+global sidebarwidth = 200WINSCALE
 
+global fontawesome::Ptr{ig.lib.ImFont} = C_NULL
+
+include("manager.jl")
+include("elements.jl")
 
 function (@main)(ARGS)
+	# @info "Start"
 	global sleep_interupt_interval
 	## Parse ARGS
 	parsed = parse_commandline()
@@ -109,9 +106,12 @@ function (@main)(ARGS)
 	@assert default_font != C_NULL
 	@assert fontawesome != C_NULL
 
+	# @info "Rendering"
 	ig.render(ctx; window_size=(100,100), window_title="Keithley 2470", on_exit=() -> ImPlot.DestroyContext(p_ctx)) do
 		global WINSCALE
+		global sidebarwidth
 		WINSCALE = ig.GetWindowDpiScale()
+		sidebarwidth = 200WINSCALE
 
 		@cstatic first_frame = true begin
 			if first_frame
@@ -128,77 +128,35 @@ function (@main)(ARGS)
 				ig.ImGuiWindowFlags_NoCollapse )
 		end
 
+		# @info "menu"
 		menubar()
 
+		ig.BeginGroup()
+
+		if ig.BeginTabBar("IV and RealTime", ig.ImGuiTabBarFlags_NoCloseWithMiddleMouseButton)
+			# @info "iv tab"
+			if ig.BeginTabItem("I-V Sweep")
+				ivtab()
+				ig.EndTabItem()
+			end
+			
+			# @info "rt tab"
+			if ig.BeginTabItem("Realtime Monitor")
+				rttab()
+				ig.EndTabItem()
+			end
+			ig.EndTabBar()
+		end
 		
+		ig.EndGroup()
+		
+		# @info "logs"
+		ig.SameLine()
+		logs()
 
 		ig.End()
 	end
 
 end
-
-
-
-function menubar()
-	if ig.BeginMenuBar()
-		if ig.BeginMenu("Device Selection")
-			@cstatic instrs = String[] selected_keithley::Cint = 0 selected_spectra::Cint = 0 begin
-				if ig.Button("Refresh Devices")
-					global RM
-					RM = ResourceManager()
-					instrs = find_resources(RM)
-				end
-				@c ig.Combo("Keithley", &selected_keithley, instrs)
-				@c ig.Combo("SpectraPro", &selected_spectra, instrs)
-				if selected_keithley == selected_spectra
-					selected_spectra = (selected_spectra + 1) % (length(instrs)-1)
-				end
-				global RM
-				global Keithley
-				global Spectra
-				if ig.Button("Connect")
-					connect!(RM, Keithley, instrs[selected_keithley+1])
-					connect!(RM, Spectra, instrs[selected_spectra+1])
-				end
-				if Keithley.connected && Spectra.connected
-					ig.SameLine()
-					ig.Text("Success!")
-				else
-					if !Keithley.connected
-						ig.SameLine()
-						ig.Text("Failed to connect Keithley")
-					end
-					if !Spectra.connected
-						ig.SameLine()
-						ig.Text("Failed to connect SpectraPro")
-					end
-				end
-			end
-			ig.EndMenu()
-		end
-
-		if ig.BeginMenu("Timestamp Export Mode")
-			global timestamp_mode
-			selected::Int32 = @match timestamp_mode begin
-				:datetime => 1
-				:seconds => 2
-				:nanoseconds => 3
-				_ => -1
-			end
-
-			@c ig.RadioButton("DateTime Timestamps", &selected, 1)
-			@c ig.RadioButton("Seconds since start of capture", &selected, 2)
-			@c ig.RadioButton("Nanoseconds since start of capture", &selected, 3)
-
-			global timestamp_mode
-			timestamp_mode = [:datetime, :seconds, :nanoseconds][selected]
-			ig.EndMenu()
-		end
-
-
-		ig.EndMenuBar()
-	end
-end
-
 
 end # module GPIBUI

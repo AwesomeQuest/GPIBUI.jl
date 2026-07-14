@@ -1,6 +1,6 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.12.5"
+julia_version = "1.12.6"
 manifest_format = "2.0"
 project_hash = "800c30a2471a180bc54bce57ed9a4125426fec67"
 
@@ -204,7 +204,7 @@ uuid = "0656b61e-2033-5cc2-a64a-77c0f6c09b89"
 version = "3.4.1+1"
 
 [[deps.GPIBUI]]
-deps = ["Instruments"]
+deps = ["ArgParse", "CImGui", "Dates", "DelimitedFiles", "GLFW", "ImPlot", "Instruments", "Match", "ModernGL", "NativeFileDialog", "TimesDates"]
 path = "."
 uuid = "436e4e96-0ab2-4398-a91b-2cd21258dd9b"
 version = "0.1.0"
@@ -260,9 +260,7 @@ version = "1.4.5"
 
 [[deps.Instruments]]
 deps = ["BinDeps", "Libdl", "Test"]
-git-tree-sha1 = "c0b8d0f02ee3ef2095957bea7f2a253af60ca09b"
-repo-rev = "master"
-repo-url = "https://github.com/AwesomeQuest/Instruments.jl.git"
+path = "../Instruments.jl"
 uuid = "2c6aeda0-45f5-11e9-10ba-f7b3d6416888"
 version = "0.2.2"
 
