@@ -1,67 +1,14 @@
+using Printf
 
 function menubar()
 	if ig.BeginMenuBar()
 		if ig.BeginMenu("Device Selection")
-			@cstatic instrs = String[] selected_keithley::Cint = 0 selected_spectra::Cint = 0 begin
-				if ig.Button("Scan for Devices")
-					global RM
-					RM = ResourceManager()
-					instrs = find_resources(RM)
-				end
-				if @c(ig.Combo("Keithley", &selected_keithley, instrs)) && selected_spectra == selected_keithley
-					global is_connected, kill_manager
-					kill_manager[] = true
-					is_connected = false
-					selected_spectra = (selected_spectra + 1) % (length(instrs)-1)
-				end
-				if @c(ig.Combo("SpectraPro", &selected_spectra, instrs)) && selected_spectra == selected_keithley
-					global is_connected, kill_manager
-					kill_manager[] = true
-					is_connected = false
-					selected_keithley = (selected_keithley + 1) % (length(instrs)-1)
-				end
-				global RM
-				global Keithley
-				global Spectra
-				if ig.Button("Connect")
-					connect!(RM, Keithley, instrs[selected_keithley+1])
-					connect!(RM, Spectra, instrs[selected_spectra+1])
-					
-					id = query(Keithley, "*IDN?")
-					selectedtype = findfirst(keithley_types) do t
-						occursin(t, id)
-					end
-					if selectedtype !== nothing
-						global selected_keithley_type
-						selected_keithley_type = selectedtype
-						global is_connected
-						is_connected = true
-						global kill_manager
-						kill_manager[] = false
-						errormonitor(Threads.@spawn spectramanager())
-						initialize_keithley()
-					end
-
-
-				end
-				if Keithley.connected && Spectra.connected
-					ig.SameLine()
-					ig.Text("Success!")
-				else
-					if !Keithley.connected
-						ig.Text("Failed to connect Keithley")
-					end
-					if !Spectra.connected
-						ig.Text("Failed to connect SpectraPro")
-					end
-				end
-			end
+			deviceselect()
 			ig.EndMenu()
 		end
 
 		if ig.BeginMenu("Timestamp Export Mode")
-			global timestamp_mode
-			selected::Int32 = @match timestamp_mode begin
+			selected::Int32 = @match DATA.timestamp_mode begin
 				:datetime => 1
 				:seconds => 2
 				:nanoseconds => 3
@@ -72,13 +19,65 @@ function menubar()
 			@c ig.RadioButton("Seconds since start of capture", &selected, 2)
 			@c ig.RadioButton("Nanoseconds since start of capture", &selected, 3)
 
-			global timestamp_mode
-			timestamp_mode = [:datetime, :seconds, :nanoseconds][selected]
+			DATA.timestamp_mode = [:datetime, :seconds, :nanoseconds][selected]
 			ig.EndMenu()
 		end
 
-
 		ig.EndMenuBar()
+	end
+end
+
+function deviceselect()
+	@cstatic instrs = String[] selected_keithley::Cint = 0 selected_spectra::Cint = 0 begin
+		if ig.Button("Scan for Devices")
+			try
+				instrs = find_resources(RM)
+			catch
+				# TODO maybe bad idea
+				ResourceManager()
+				instrs = find_resources(RM)
+			end
+		end
+		if @c(ig.Combo("Keithley", &selected_keithley, instrs)) && selected_spectra == selected_keithley
+			SPECTRA.kill[] = true
+			CONNECTED[] = false
+			selected_spectra = (selected_spectra + 1) % (length(instrs)-1)
+		end
+		if @c(ig.Combo("SpectraPro", &selected_spectra, instrs)) && selected_spectra == selected_keithley
+			SPECTRA.kill[] = true
+			CONNECTED[] = false
+			selected_keithley = (selected_keithley + 1) % (length(instrs)-1)
+		end
+
+		if ig.Button("Connect")
+			connect!(RM, KEITHLEY.gpib, instrs[selected_keithley+1])
+			connect!(RM, SPECTRA.gpib, instrs[selected_spectra+1])
+			
+			id = query(KEITHLEY.gpib, "*IDN?")
+			selectedtype = findfirst(KEITHLEY_TYPES) do t
+				occursin(t, id)
+			end
+			if selectedtype !== nothing
+				KEITHLEY.selected_type = selectedtype
+				CONNECTED[] = true
+				SPECTRA.kill[] = false
+				errormonitor(Threads.@spawn spectramanager())
+				errormonitor(Threads.@spawn spectrastatusmonitor()())
+				errormonitor(Threads.@spawn initialize_keithley())
+			end
+		end
+
+		if KEITHLEY.gpib.connected && SPECTRA.gpib.connected
+			ig.SameLine()
+			ig.Text("Success!")
+		else
+			if !KEITHLEY.gpib.connected
+				ig.Text("Failed to connect Keithley")
+			end
+			if !SPECTRA.gpib.connected
+				ig.Text("Failed to connect SpectraPro")
+			end
+		end
 	end
 end
 
@@ -90,12 +89,12 @@ function ivtab()
 	ig.BeginGroup()
 	flagschecks()
 	@debug_once "plot"
-	@lock plotlock begin
+	@lock PLOT_LOCK begin
 		simpleimplot(
 			"I-V Sweep",
 			"Voltage [V]", "Current [A]",
-			ig.ImVec2(-sidebarwidth,-1),
-			iv_volts, iv_currs
+			ig.ImVec2(-UI.sidebarwidth,-1),
+			DATA.iv_volts, DATA.iv_currs
 		)
 	end
 	ig.EndGroup()
@@ -103,31 +102,25 @@ end
 
 function ivinputs()
 	ig.BeginGroup()
-	global iv_times
-	global iv_currs
-	global iv_volts
-	cleardatabutton(iv_times, iv_currs, iv_volts)
+	cleardatabutton(UI.processes.iv_active, DATA.iv_times, DATA.iv_currs, DATA.iv_volts)
 	
 	@debug_once "table"
 	ig.PushStyleVar(ig.lib.ImGuiStyleVar_CellPadding, (3,3))
 	global WINSCALE
-	if ig.BeginTable("iv_maxmin_table", 2, 0, (250WINSCALE,50WINSCALE))
+	if ig.BeginTable("iv_maxmin_table", 2, 0, (250UI.WINSCALE,50UI.WINSCALE))
 		ig.TableSetupColumn("Maximum [A]")
 		ig.TableSetupColumn("Minimum [A]")
 		ig.TableHeadersRow()
 		ig.TableNextRow()
 		ig.TableSetColumnIndex(0)
-		ig.Text("$(isempty(iv_currs) ? "NAN" : round(maximum(iv_currs), sigdigits=5))")
+		ig.Text("$(isempty(DATA.iv_currs) ? "NAN" : round(maximum(DATA.iv_currs), sigdigits=5))")
 		ig.TableSetColumnIndex(1)
-		ig.Text("$(isempty(iv_currs) ? "NAN" : round(minimum(iv_currs), sigdigits=5))")
+		ig.Text("$(isempty(DATA.iv_currs) ? "NAN" : round(minimum(DATA.iv_currs), sigdigits=5))")
 		ig.EndTable()
 	end
 	ig.PopStyleVar()
 
-	global iv_times
-	global iv_currs
-	global iv_volts
-	savedatabutton(iv_times, iv_currs, iv_volts)
+	savedatabutton(UI.processes.iv_active, DATA.iv_times, DATA.iv_currs, DATA.iv_volts)
 
 	@debug_once "inputvals"
 	sweepinputvals()
@@ -139,54 +132,87 @@ function ivinputs()
 end
 
 function spectracontrols()
-	@cstatic scan_speed	= Cdouble(100) curr_nm = Cdouble(0.0) begin
-	@cstatic jog_speed	= Cdouble(100) grating = Cint(-1) turret = Cint(-1) begin
+	@cstatic grating::Cint = -1 turret::Cint = -1 begin
 	@cstatic gratinglist::Vector{String} = String[] turretlist::Vector{String} = String[] begin
 		@debug_once "Init Spectra"
-		global is_connected
-		if grating == -1 && is_connected
-			nm, nmmin, nmjog, selectedG, selectedT, gratinglist, turretlist = initialize_spectra()
-			curr_nm = parse(Float64, nm)
-			scan_speed = parse(Float64, nmmin)
-			jog_speed = parse(Float64, filter(isdigit, nmjog))
-			grating = parse(Int32, selectedG)
-			turret = parse(Int32, selectedT)
+		if grating == -1 && CONNECTED[]
+			gratinglist, turretlist = initialize_spectra()
 		end
 
-		global WINSCALE
-		ig.PushItemWidth(200WINSCALE)
+		ig.PushItemWidth(200UI.WINSCALE)
+		S = @atomic SPECTRA.status
+		if S.fresh
+			grating = S.grating
+			turret = S.turret
+
+			ig.Text("Wavelength: $(S.nm)")
+			ig.Text("Wavelength scan speed: $(S.nmmin)")
+			ig.Text("Wavelength jog increment: $(S.nmjog)")
+		end
+
 		turr::Int32 = turret - 1
 		if grating != -1 && @c ig.Combo("Turret", &turr, turretlist)
-			turret = turr + 1
+			tell_spectra("$(turr+1) TURRET")
 		end
-		grat::Int32 = grating - 1
+		grat::Int32 = (grating÷turret) - 1
 		if grating != -1 && @c ig.Combo("Grating", &grat, gratinglist[2turret-1:2turret])
-			grating = grat + 1
+			tell_spectra("$(grat+1) GRATING")
 		end
 		ig.PopItemWidth()
 
+		ig.PushItemWidth(50UI.WINSCALE)
+		BTNSIZE = (40UI.WINSCALE, 15UI.WINSCALE)
 
+		@cstatic set_wavelength::Cfloat = 0.0 begin
+			# ig.SetNextItemWidth(20UI.WINSCALE)
+			if ig.Button("Set##wave", BTNSIZE)
+				tell_spectra(@sprintf "%.1f NM" set_wavelength)
+			end
+			ig.SameLine()
+			@c ig.InputFloat("Set Wavelength [nm]", &set_wavelength)
+		end
 
+		@cstatic set_speed::Cfloat = 0.0 begin
+			# ig.SetNextItemWidth(20UI.WINSCALE)
+			if ig.Button("Set##speed", BTNSIZE)
+				tell_spectra(@sprintf "%.1f NM/MIN" set_speed)
+			end
+			ig.SameLine()
+			@c ig.InputFloat("Set speed [nm/min]", &set_speed)
+		end
+
+		@cstatic set_jog::Cfloat = 0.0 begin
+			# ig.SetNextItemWidth(20UI.WINSCALE)
+			if ig.Button("Set##jog", BTNSIZE)
+				tell_spectra(@sprintf "%.2f NM/JOG" set_jog)
+			end
+			ig.SameLine()
+			@c ig.InputFloat("Set jog incr [nm/jog]", &set_jog)
+		end
+
+		@cstatic gotoval::Cfloat = 0.0 begin
+			# ig.SetNextItemWidth(50UI.WINSCALE)
+			if ig.Button("GOTO", BTNSIZE)
+				tell_spectra(@sprintf "%.2f <GOTO>" gotoval)
+			end
+			ig.SameLine()
+			@c ig.InputFloat("GOTO wavelength", &gotoval)
+		end
+
+		ig.PopItemWidth()
 
 		for G in gratinglist
 			ig.Text(G)
 		end
-		for T in turretlist
-			ig.Text(T)
-		end
-
-
-	end
 	end
 	end
 end
 
 function sweepinputvals()
-	@cstatic min_volts		= Cdouble(-1)  max_volts = Cdouble(1) begin # Nested scopes so
-	@cstatic step_voltage	= Cdouble(0.1) delay	 = Cdouble(0) begin # it's more readable
-	@cstatic maxcurrent		= Cdouble(0.1) dual		 = true begin
-		global WINSCALE
-		ig.PushItemWidth(90WINSCALE)
+	@cstatic min_volts::Cdouble		= -1  max_volts::Cdouble	= 1 begin # Nested scopes so
+	@cstatic step_voltage::Cdouble	= 0.1 delay::Cdouble		= 0 begin # it's more readable
+	@cstatic maxcurrent::Cdouble	= 0.1 dual::Bool			= true begin
+		ig.PushItemWidth(90UI.WINSCALE)
 		@c ig.InputDouble("Minimum Voltage [V]", &min_volts)
 		@c ig.InputDouble("Maximum Voltage [V]", &max_volts)
 		@c ig.InputDouble("Step Voltage [V]", &step_voltage)
@@ -198,14 +224,10 @@ function sweepinputvals()
 		@c ig.InputDouble("Max Current [A]", &maxcurrent)
 		ig.PopItemWidth()
 
-		global iv_is_sweeping
-		global iv_cancel_sweep
-		global rt_is_monitoring
-		global WINSCALE
-		if !iv_is_sweeping[] && ig.Button("Start Sweep", (250WINSCALE, 30WINSCALE)) && !rt_is_monitoring[]
+		if !UI.processes.iv_active[] && ig.Button("Start Sweep", (250UI.WINSCALE, 30UI.WINSCALE)) && !UI.processes.rt_active[]
 			ig.OpenPopup("start_sweep_popup")
 		end
-		if rt_is_monitoring[]
+		if UI.processes.rt_active[]
 			if ig.BeginItemTooltip()
 				ig.TextColored((255,0,0,255), "You cannot start a sweep while monitoring")
 				ig.EndTooltip()
@@ -215,7 +237,7 @@ function sweepinputvals()
 			ig.SeparatorText("Are you sure you want to start a sweep?")
 			ig.SeparatorText("Starting a sweep will erase the previous sweep from memory.")
 			if ig.Button("I'm sure I want to permanently erase data and start a new sweep.")
-				iv_cancel_sweep[] = false
+				UI.processes.iv_cancel[] = false
 				errormonitor(
 					Threads.@spawn sweep(
 						min_volts, max_volts,
@@ -226,9 +248,8 @@ function sweepinputvals()
 			end
 			ig.EndPopup()
 		end
-		global iv_cancel_sweep
-		if iv_is_sweeping[] && ig.Button("Stop Sweep", (250WINSCALE, 30WINSCALE))
-			iv_cancel_sweep[] = true
+		if UI.processes.iv_active[] && ig.Button("Stop Sweep", (250UI.WINSCALE, 30UI.WINSCALE))
+			UI.processes.iv_cancel[] = true
 		end
 	end # @static
 	end # @static
@@ -241,13 +262,13 @@ function rttab()
 	ig.BeginGroup()
 	flagschecks()
 	
-	@lock plotlock begin
-		xs::Vector{Float64} = rt_times .|> x->x.ns/1e9
+	@lock PLOT_LOCK begin
+		xs::Vector{Float64} = DATA.rt_times .|> x->(x.ns - DATA.rt_times[1].ns)/1e9
 		simpleimplot(
 			"Real Time Monitor",
 			"Time [s]", "Current [A]",
-			ig.ImVec2(-sidebarwidth,-1),
-			xs, rt_currs
+			ig.ImVec2(-UI.sidebarwidth,-1),
+			xs, DATA.rt_currs
 		)
 	end
 	ig.EndGroup()
@@ -256,33 +277,26 @@ end
 function rtinputs()
 	ig.BeginGroup()
 
-	global rt_times
-	global rt_currs
-	global rt_volts
-	cleardatabutton(rt_times, rt_currs, rt_volts)
-	
+	cleardatabutton(Ref(false), DATA.rt_times, DATA.rt_currs, DATA.rt_volts)
+
 	ig.PushStyleVar(ig.lib.ImGuiStyleVar_CellPadding, (3,3))
-	global WINSCALE
-	if ig.BeginTable("iv_maxmin_table", 3, 0, (250WINSCALE,50WINSCALE))
+	if ig.BeginTable("iv_maxmin_table", 3, 0, (250UI.WINSCALE,50UI.WINSCALE))
 		ig.TableSetupColumn("Maximum [A]")
 		ig.TableSetupColumn("Minimum [A]")
 		ig.TableSetupColumn("Average [A]")
 		ig.TableHeadersRow()
 		ig.TableNextRow()
 		ig.TableSetColumnIndex(0)
-		ig.Text("$(isempty(rt_currs) ? "NAN" : round(maximum(rt_currs), sigdigits=5))")
+		ig.Text("$(isempty(DATA.rt_currs) ? "NAN" : round(maximum(DATA.rt_currs), sigdigits=5))")
 		ig.TableSetColumnIndex(1)
-		ig.Text("$(isempty(rt_currs) ? "NAN" : round(minimum(rt_currs), sigdigits=5))")
+		ig.Text("$(isempty(DATA.rt_currs) ? "NAN" : round(minimum(DATA.rt_currs), sigdigits=5))")
 		ig.TableSetColumnIndex(2)
-		ig.Text("$(isempty(rt_currs) ? "NAN" : round(sum(rt_currs)/length(rt_currs), sigdigits=5))")
+		ig.Text("$(isempty(DATA.rt_currs) ? "NAN" : round(sum(DATA.rt_currs)/length(DATA.rt_currs), sigdigits=5))")
 		ig.EndTable()
 	end
 	ig.PopStyleVar()
 
-	global rt_times
-	global rt_currs
-	global rt_volts
-	savedatabutton(rt_times, rt_currs, rt_volts)
+	savedatabutton(UI.processes.rt_active, DATA.rt_times, DATA.rt_currs, DATA.rt_volts)
 
 	monitorinputvals()
 
@@ -290,41 +304,35 @@ function rtinputs()
 end
 
 function monitorinputvals()
-	@cstatic set_volts=Cdouble(1) samplerate=Cdouble(0.001) maxcurrent=Cdouble(0.1) begin
-		ig.PushItemWidth(90WINSCALE)
+	@cstatic set_volts::Cdouble = 1 samplerate::Cdouble = 0.001 maxcurrent::Cdouble = 0.1 begin
+		ig.PushItemWidth(90UI.WINSCALE)
 		@c ig.InputDouble("Set Voltage [V]", &set_volts)
 		@c ig.InputDouble("Sample rate [s]", &samplerate)
 		if samplerate < 0 samplerate = 0 end
-		global rt_sample_period
-		rt_sample_period = seconds(samplerate)
+		KEITHLEY.config.sample_period = seconds(samplerate)
 
 		@c ig.InputDouble("Max Current [A]", &maxcurrent)
 		ig.PopItemWidth()
 
-		global rt_is_monitoring
-		global rt_cancel_monitor
-		global iv_is_sweeping
-		global WINSCALE
-		if !rt_is_monitoring[]
-			global rt_times
-			if !isempty(rt_times) && ig.Button("Resume", (250WINSCALE, 40WINSCALE))
+		if !UI.processes.rt_active
+			if !isempty(DATA.rt_times) && ig.Button("Resume", (250UI.WINSCALE, 40UI.WINSCALE))
 				@goto start_sweep
-			elseif isempty(rt_times) && ig.Button("Start", (250WINSCALE, 40WINSCALE))
+			elseif isempty(DATA.rt_times) && ig.Button("Start", (250UI.WINSCALE, 40UI.WINSCALE))
 				@goto start_sweep
 			end
 			@goto dont_sweep
 			@label start_sweep
-			if !iv_is_sweeping[]
-				rt_cancel_monitor[] = false
+			if !UI.processes.iv_active[]
+				UI.processes.iv_cancel[] = false
 				errormonitor(Threads.@spawn monitor(set_volts, maxcurrent))
 			end
 			@label dont_sweep
 		else
-			if ig.Button("Stop", (250WINSCALE, 40WINSCALE))
-				rt_cancel_monitor[] = true
+			if ig.Button("Stop", (250UI.WINSCALE, 40UI.WINSCALE))
+				UI.processes.rt_cancel[] = true
 			end
 		end
-		if iv_is_sweeping[]
+		if UI.processes.iv_active[]
 			if ig.BeginItemTooltip()
 				ig.TextColored((255,0,0,255), "You cannot start monitoring during a sweep")
 				ig.EndTooltip()
@@ -334,35 +342,30 @@ function monitorinputvals()
 end
 
 function flagschecks()
-	global xflags
-	global yflags
-	@c ig.CheckboxFlags("Fit X-Axis", &xflags, ImPlot.ImPlotAxisFlags_AutoFit)
+	@c ig.CheckboxFlags("Fit X-Axis", &UI.xflags, ImPlot.ImPlotAxisFlags_AutoFit)
 	ig.SameLine()
-	@c ig.CheckboxFlags("Fit Y-Axis", &yflags, ImPlot.ImPlotAxisFlags_AutoFit)
-	if (xflags | yflags) & ImPlot.ImPlotAxisFlags_AutoFit != 0
-		if (xflags & yflags) & ImPlot.ImPlotAxisFlags_AutoFit != 0
-			xflags = xflags & ~ImPlot.ImPlotAxisFlags_RangeFit
-			yflags = yflags & ~ImPlot.ImPlotAxisFlags_RangeFit
+	@c ig.CheckboxFlags("Fit Y-Axis", &UI.yflags, ImPlot.ImPlotAxisFlags_AutoFit)
+	if (UI.xflags | UI.yflags) & ImPlot.ImPlotAxisFlags_AutoFit == 0
+		return
+	end
+	if (UI.xflags & UI.yflags) & ImPlot.ImPlotAxisFlags_AutoFit != 0
+		UI.xflags = UI.xflags & ~ImPlot.ImPlotAxisFlags_RangeFit
+		UI.yflags = UI.yflags & ~ImPlot.ImPlotAxisFlags_RangeFit
+	else
+		ig.SameLine()
+		if UI.xflags & ImPlot.ImPlotAxisFlags_AutoFit != 0
+			@c ig.CheckboxFlags("Range Fit", &UI.xflags, ImPlot.ImPlotAxisFlags_RangeFit)
+		elseif UI.yflags & ImPlot.ImPlotAxisFlags_AutoFit != 0
+			@c ig.CheckboxFlags("Range Fit", &UI.yflags, ImPlot.ImPlotAxisFlags_RangeFit)
 		else
-			ig.SameLine()
-			if xflags & ImPlot.ImPlotAxisFlags_AutoFit != 0
-				@c ig.CheckboxFlags("Range Fit", &xflags, ImPlot.ImPlotAxisFlags_RangeFit)
-			elseif yflags & ImPlot.ImPlotAxisFlags_AutoFit != 0
-				@c ig.CheckboxFlags("Range Fit", &yflags, ImPlot.ImPlotAxisFlags_RangeFit)
-			else
-				@assert false "Unreachable!"
-			end
+			@assert false "Unreachable!"
 		end
 	end
 end
 
 function simpleimplot(title, xaxis, yaxis, plot_size, xs, ys)
-	global WINSCALE
-	global sidebarwidth
 	if ImPlot.BeginPlot(title, xaxis, yaxis, plot_size)
-		global xflags
-		global yflags
-		ImPlot.SetupAxes(xaxis, yaxis, xflags, yflags)
+		ImPlot.SetupAxes(xaxis, yaxis, UI.xflags, UI.yflags)
 		if !isempty(xs)
 			ImPlot.PlotLine("data", xs, ys)
 		end
@@ -370,16 +373,16 @@ function simpleimplot(title, xaxis, yaxis, plot_size, xs, ys)
 	end
 end
 
-function cleardatabutton(arrs...)
+function cleardatabutton(notallowref, arrs...)
 	global WINSCALE
 	global iv_is_sweeping
 	global rt_is_monitoring
-	if ig.Button("Clear Data", (250WINSCALE, 30WINSCALE)) && !(iv_is_sweeping[] || rt_is_monitoring[])
+	if ig.Button("Clear Data", (250UI.WINSCALE, 30UI.WINSCALE)) && !notallowref[]
 		ig.OpenPopup("clear data popup")
 	end
-	if iv_is_sweeping[] || rt_is_monitoring[]
+	if notallowref[]
 		if ig.BeginItemTooltip()
-			ig.TextColored((255,0,0,255), "You cannot clear data during a sweep or while monitoring")
+			ig.TextColored((255,0,0,255), "You cannot clear data right now")
 			ig.EndTooltip()
 		end
 	end
@@ -396,17 +399,14 @@ function cleardatabutton(arrs...)
 	end
 end
 
-function savedatabutton(arrs...)
-	global timestamp_mode
-	global iv_is_sweeping
-	global rt_is_monitoring
-	if ig.Button("Save Data##iv", (250WINSCALE, 30WINSCALE)) && !(iv_is_sweeping[] || rt_is_monitoring[])
+function savedatabutton(notallowref, arrs...)
+	if ig.Button("Save Data##iv", (250UI.WINSCALE, 30UI.WINSCALE)) && !notallowref[]
 		filepath = save_file(;filterlist="csv")
-		!isempty(filepath) && savetofile(arrs..., timestamp_mode, filepath)
+		!isempty(filepath) && savetofile(arrs..., DATA.timestamp_mode, filepath)
 	end
-	if iv_is_sweeping[] || rt_is_monitoring[]
+	if notallowref[]
 		if ig.BeginItemTooltip()
-			ig.TextColored((255,0,0,255), "You cannot save data during a sweep or while monitoring")
+			ig.TextColored((255,0,0,255), "You cannot save data right now")
 			ig.EndTooltip()
 		end
 	end
@@ -418,8 +418,7 @@ function logs()
 		errormonitor(Threads.@spawn getevents())
 	end
 
-	global event_list
-	lst = event_list |> enumerate |> collect
+	lst = DATA.event_list |> enumerate |> collect
 	@cstatic showinfo = true showwarn = true showerror = true begin
 		@c ig.Checkbox("Info", &showinfo)
 		ig.SameLine()
@@ -436,18 +435,16 @@ function logs()
 		end
 	end
 
-	event_table(lst, event_list)
+	event_table(lst, DATA.event_list)
 
 	ig.EndGroup()
 end
 
 function event_table(list, master)
-	global sidebarwidth
-	global WINSCALE
 	tableflags = ig.ImGuiTableFlags_Borders |
 		ig.ImGuiTableFlags_RowBg |
 		ig.ImGuiTableFlags_SizingFixedFit
-	if ig.BeginTable("Event List", 2, tableflags, (sidebarwidth, -1f0))
+	if ig.BeginTable("Event List", 2, tableflags, (UI.sidebarwidth, -1f0))
 		ig.TableSetupColumn("msg", ig.ImGuiTableColumnFlags_WidthStretch)
 		ig.TableSetupColumn("delete", ig.ImGuiTableColumnFlags_WidthFixed, 30f0)
 		for (i,msg) in list
@@ -458,9 +455,8 @@ function event_table(list, master)
 			ig.Text(msg)
 			ig.PopTextWrapPos()
 
-			global fontawesome
 			ig.TableSetColumnIndex(1)
-			ig.PushFont(fontawesome, 12)
+			ig.PushFont(UI.fontawesome, 12)
 			if ig.Button("##listbtn$i")
 				popat!(master, i)
 			end

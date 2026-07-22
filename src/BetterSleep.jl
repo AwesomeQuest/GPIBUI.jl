@@ -97,7 +97,7 @@ function autosleep(t::Nano)
     busywait(t)
 end
 
-function interuptsleep(t::Nano, interupt::Ref{Bool}, interupt_check_time::Nano)
+function interuptsleep(t::Nano, interupt, interupt_check_time::Nano)
 	start_time = now()
 	while now() - start_time < t && !interupt[]
 		if t - (now() - start_time) > interupt_check_time
