@@ -27,9 +27,10 @@ function initialize_keithley()
 		write(KEITHLEY.gpib, "*RST")
 		write(KEITHLEY.gpib, "SOUR:FUNC VOLT")
 		write(KEITHLEY.gpib, "SENS:FUNC 'CURR'")
-		if KEITHLEY_TYPES[KEITHLEY.selected_type] == "MODEL 2400"
+		@modeswitch KEITHLEY_TYPES[KEITHLEY.selected_type] begin
+			"MODEL 2400"
 			write(KEITHLEY.gpib, "FORM:ELEM VOLT,CURR")
-		elseif KEITHLEY_TYPES[KEITHLEY.selected_type ] == "MODEL 2470"
+			"MODEL 2470"
 			write(KEITHLEY.gpib, ":FORM:ASC:PREC 16")
 		end
 	end
@@ -41,17 +42,19 @@ function monitor(volts_set, maxcurrent)
 	CONNECTED[] || nodeviceconnected() || return
 
 	errormonitor(Threads.@spawn getevents())
-	if KEITHLEY_TYPES[KEITHLEY.selected_type] == "MODEL 2400"
+	@modeswitch KEITHLEY_TYPES[KEITHLEY.selected_type] begin
+		"MODEL 2400"
 		@lock GPIB_LOCK write(KEITHLEY.gpib, "SENS:CURR:PROT $(maxcurrent)")
-	elseif KEITHLEY_TYPES[KEITHLEY.selected_type] == "MODEL 2470"
+		"MODEL 2470"
 		@lock GPIB_LOCK write(KEITHLEY.gpib, "SOUR:VOLT:ILIMIT $(maxcurrent)")
-	else
-		@assert false "Unreachable!"
 	end
 	@lock GPIB_LOCK write(KEITHLEY.gpib, "SOUR:VOLT $(volts_set)")
 	@lock GPIB_LOCK write(KEITHLEY.gpib, "OUTP ON")
 
-	if KEITHLEY_TYPES[KEITHLEY.selected_type] == "MODEL 2470"
+	@modeswitch KEITHLEY_TYPES[KEITHLEY.selected_type] begin
+		"MODEL 2400"
+		identity(nothing) # Do nothing
+		"MODEL 2470"
 		@lock GPIB_LOCK begin
 			write(KEITHLEY.gpib, "CURR:AZER ON")
 			write(KEITHLEY.gpib, "VOLT:AZER ON")
@@ -71,16 +74,19 @@ function monitor(volts_set, maxcurrent)
 			measvolt = query(KEITHLEY.gpib, "MEAS:VOLT?")
 		end
 		try
-			if KEITHLEY_TYPES[KEITHLEY.selected_type] == "MODEL 2400"
-				_, curr = split(meascurr, ',')
-				volt, _ = split(measvolt, ',')
-				curr = parse(Float64, curr)
-				volt = parse(Float64, volt)
-			elseif KEITHLEY_TYPES[KEITHLEY.selected_type] == "MODEL 2470"
-				curr = parse(Float64, meascurr)
-				volt = parse(Float64, measvolt)
-			else
-				@assert false "Unreachable!"
+			@modeswitch KEITHLEY_TYPES[KEITHLEY.selected_type] begin
+				"MODEL 2400"
+				begin
+					_, curr = split(meascurr, ',')
+					volt, _ = split(measvolt, ',')
+					curr = parse(Float64, curr)
+					volt = parse(Float64, volt)
+				end
+				"MODEL 2470"
+				begin
+					curr = parse(Float64, meascurr)
+					volt = parse(Float64, measvolt)
+				end
 			end
 			@lock PLOT_LOCK begin
 				push!(DATA.rt_times, now())
@@ -137,14 +143,15 @@ function sweep(min_volts, max_volts, step_voltage, delay, maxcurrent, dual)
 
 	errormonitor(Threads.@spawn getevents())
 	@lock GPIB_LOCK begin
-		if KEITHLEY_TYPES[KEITHLEY.selected_type] == "MODEL 2400"
+		@modeswitch KEITHLEY_TYPES[KEITHLEY.selected_type] begin
+			"MODEL 2400"
 			write(KEITHLEY.gpib, "SENS:CURR:PROT $(maxcurrent)")
-		elseif KEITHLEY_TYPES[KEITHLEY.selected_type] == "MODEL 2470"
-			write(KEITHLEY.gpib, "SOUR:VOLT:ILIMIT $(maxcurrent)")
-			D = dual ? "ON" : "OFF"
-			write(KEITHLEY.gpib, "SOUR:SWE:VOLT:LIN:STEP $min_volts, $max_volts, $step_voltage, $delay, 1, AUTO, ON, $D")
-		else
-			@assert false "Unreachable!"
+			"MODEL 2470"
+			begin
+				write(KEITHLEY.gpib, "SOUR:VOLT:ILIMIT $(maxcurrent)")
+				D = dual ? "ON" : "OFF"
+				write(KEITHLEY.gpib, "SOUR:SWE:VOLT:LIN:STEP $min_volts, $max_volts, $step_voltage, $delay, 1, AUTO, ON, $D")
+			end
 		end
 	end
 
@@ -157,36 +164,39 @@ function sweep(min_volts, max_volts, step_voltage, delay, maxcurrent, dual)
 	@lock GPIB_LOCK begin
 		write(KEITHLEY.gpib, "SOUR:VOLT 0")
 		write(KEITHLEY.gpib, "OUTP ON")
-		if KEITHLEY_TYPES[KEITHLEY.selected_type] == "MODEL 2470"
+		@modeswitch KEITHLEY_TYPES[KEITHLEY.selected_type] begin
+			"MODEL 2400"
+			identity(nothing) # Do nothing
+			"MODEL 2470"
 			write(KEITHLEY.gpib, "INIT")
 		end
 	end
 	stepvals = calculate_sweep(min_volts, max_volts, step_voltage, dual)
-	if KEITHLEY_TYPES[KEITHLEY.selected_type] == "MODEL 2400"
+	@modeswitch KEITHLEY_TYPES[KEITHLEY.selected_type] begin
+		"MODEL 2400"
 		voltssize = length(stepvals)
-	elseif KEITHLEY_TYPES[KEITHLEY.selected_type] == "MODEL 2470"
-		voltssize = ""
-		@lock GPIB_LOCK voltssize = query(KEITHLEY.gpib, "SOUR:CONF:LIST:SIZE? \"VoltLinearSweepList\"")
-		voltssize = parse(Int, voltssize)
-	else
-		@assert false "Unreachable!"
+		"MODEL 2470"
+		begin
+			voltssize = ""
+			@lock GPIB_LOCK voltssize = query(KEITHLEY.gpib, "SOUR:CONF:LIST:SIZE? \"VoltLinearSweepList\"")
+			voltssize = parse(Int, voltssize)
+		end
 	end
 	sizehint!(DATA.iv_times, voltssize)
 	sizehint!(DATA.iv_volts, voltssize)
 	sizehint!(DATA.iv_currs, voltssize)
 	lastact = 1
 	UI.processes.iv_active[] = true
-	if KEITHLEY_TYPES[KEITHLEY.selected_type] == "MODEL 2400"
+	@modeswitch KEITHLEY_TYPES[KEITHLEY.selected_type] begin
+		"MODEL 2400"
 		for setvolts in stepvals
 			UI.processes.iv_cancel[] && break
 			set_and_measure2400(setvolts, seconds(delay), UI.processes.iv_cancel)			
 		end
-	elseif KEITHLEY_TYPES[KEITHLEY.selected_type] == "MODEL 2470"
+		"MODEL 2470"
 		while !UI.processes.iv_cancel[] && length(iv_volts) != voltssize
 			lastact = get_outstanding_data2470(lastact)
 		end
-	else
-		@assert false "Unreachable!"
 	end
 	UI.processes.iv_active[] = false
 	errormonitor(Threads.@spawn getevents())
