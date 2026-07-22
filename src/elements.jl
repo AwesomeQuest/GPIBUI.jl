@@ -64,42 +64,42 @@ function deviceselect()
 	
 
 
-		if ig.Button("Scan for Devices")
-			try
+	if ig.Button("Scan for Devices")
+		try
 			INSTRS.instruments = find_resources(INSTRS.RM)
-			catch
-				# TODO maybe bad idea
-				ResourceManager()
+		catch
+			# TODO maybe bad idea
+			ResourceManager()
 			INSTRS.instruments = find_resources(INSTRS.RM)
-			end
-		end
-	if @c(ig.Combo("Keithley", &INSTRS.selected_keithley, INSTRS.instruments)) && INSTRS.selected_spectra == INSTRS.selected_keithley
-			SPECTRA.kill[] = true
-			CONNECTED[] = false
-		INSTRS.selected_spectra = (INSTRS.selected_spectra + 1) % (length(INSTRS.instruments)-1)
-		end
-	if @c(ig.Combo("SpectraPro", &INSTRS.selected_spectra, INSTRS.instruments)) && INSTRS.selected_spectra == INSTRS.selected_keithley
-			SPECTRA.kill[] = true
-			CONNECTED[] = false
-		INSTRS.selected_keithley = (INSTRS.selected_keithley + 1) % (length(INSTRS.instruments)-1)
-		end
-
-		if ig.Button("Connect")
-		connect_devices(INSTRS.instruments, INSTRS.selected_keithley, INSTRS.selected_spectra)
-		end
-
-		if KEITHLEY.gpib.connected && SPECTRA.gpib.connected
-			ig.SameLine()
-			ig.Text("Success!")
-		else
-			if !KEITHLEY.gpib.connected
-				ig.Text("Failed to connect Keithley")
-			end
-			if !SPECTRA.gpib.connected
-				ig.Text("Failed to connect SpectraPro")
-			end
 		end
 	end
+	if @c(ig.Combo("Keithley", &INSTRS.selected_keithley, INSTRS.instruments)) && INSTRS.selected_spectra == INSTRS.selected_keithley
+		SPECTRA.kill[] = true
+		CONNECTED[] = false
+		INSTRS.selected_spectra = (INSTRS.selected_spectra + 1) % (length(INSTRS.instruments)-1)
+	end
+	if @c(ig.Combo("SpectraPro", &INSTRS.selected_spectra, INSTRS.instruments)) && INSTRS.selected_spectra == INSTRS.selected_keithley
+		SPECTRA.kill[] = true
+		CONNECTED[] = false
+		INSTRS.selected_keithley = (INSTRS.selected_keithley + 1) % (length(INSTRS.instruments)-1)
+	end
+
+	if ig.Button("Connect")
+		connect_devices(INSTRS.instruments, INSTRS.selected_keithley, INSTRS.selected_spectra)
+	end
+
+	if KEITHLEY.gpib.connected && SPECTRA.gpib.connected
+		ig.SameLine()
+		ig.Text("Success!")
+	else
+		if !KEITHLEY.gpib.connected
+			ig.Text("Failed to connect Keithley")
+		end
+		if !SPECTRA.gpib.connected
+			ig.Text("Failed to connect SpectraPro")
+		end
+	end
+end
 
 function connect_devices(instrs, selected_keithley, selected_spectra)
 	connect!(INSTRS.RM, KEITHLEY.gpib, instrs[selected_keithley+1])
@@ -193,11 +193,11 @@ function spectracontrols()
 
 		turr::Int32 = turret - 1
 		if grating != -1 && @c ig.Combo("Turret", &turr, turretlist)
-			tell_spectra("$(turr+1) TURRET")
+			tell_spectra_modal("$(turr+1) TURRET")
 		end
 		grat::Int32 = (grating÷turret) - 1
 		if grating != -1 && @c ig.Combo("Grating", &grat, gratinglist[2turret-1:2turret])
-			tell_spectra("$(grat+1) GRATING")
+			tell_spectra_modal("$(grat+1) GRATING")
 		end
 		ig.PopItemWidth()
 
@@ -207,37 +207,37 @@ function spectracontrols()
 		@cstatic set_wavelength::Cfloat = 0.0 begin
 			# ig.SetNextItemWidth(20UI.WINSCALE)
 			if ig.Button("Set##wave", BTNSIZE)
-				tell_spectra(@sprintf "%.1f NM" set_wavelength)
+				tell_spectra_modal(@sprintf "%.1f NM" set_wavelength)
 			end
 			ig.SameLine()
-			@c ig.InputFloat("Set Wavelength [nm]", &set_wavelength)
+			@c ig.InputFloat("Set Wavelength [nm]", &set_wavelength, 0.0f0, 0.0f0, "%.1f")
 		end
 
 		@cstatic set_speed::Cfloat = 0.0 begin
 			# ig.SetNextItemWidth(20UI.WINSCALE)
 			if ig.Button("Set##speed", BTNSIZE)
-				tell_spectra(@sprintf "%.1f NM/MIN" set_speed)
+				tell_spectra_modal(@sprintf "%.1f NM/MIN" set_speed)
 			end
 			ig.SameLine()
-			@c ig.InputFloat("Set speed [nm/min]", &set_speed)
+			@c ig.InputFloat("Set speed [nm/min]", &set_speed, 0.0f0, 0.0f0, "%.1f")
 		end
 
 		@cstatic set_jog::Cfloat = 0.0 begin
 			# ig.SetNextItemWidth(20UI.WINSCALE)
 			if ig.Button("Set##jog", BTNSIZE)
-				tell_spectra(@sprintf "%.2f NM/JOG" set_jog)
+				tell_spectra_modal(@sprintf "%.2f NM/JOG" set_jog)
 			end
 			ig.SameLine()
-			@c ig.InputFloat("Set jog incr [nm/jog]", &set_jog)
+			@c ig.InputFloat("Set jog incr [nm/jog]", &set_jog, 0.0f0, 0.0f0, "%.2f")
 		end
 
 		@cstatic gotoval::Cfloat = 0.0 begin
 			# ig.SetNextItemWidth(50UI.WINSCALE)
 			if ig.Button("GOTO", BTNSIZE)
-				tell_spectra(@sprintf "%.2f <GOTO>" gotoval)
+				tell_spectra_modal(@sprintf "%.2f <GOTO>" gotoval)
 			end
 			ig.SameLine()
-			@c ig.InputFloat("GOTO wavelength", &gotoval)
+			@c ig.InputFloat("GOTO wavelength", &gotoval, 0.0f0, 0.0f0, "%.2f")
 		end
 
 		ig.PopItemWidth()
@@ -245,8 +245,35 @@ function spectracontrols()
 		for G in gratinglist
 			ig.Text(G)
 		end
+
+		if ig.BeginPopupModal("Waiting for command to finish", C_NULL, ig.ImGuiWindowFlags_AlwaysAutoResize)
+			ig.Text("Hæ, It seems you've pressed a button that takes a while to finish")
+			ig.Text("It has been $(round((now() - UI.last_time_button_pressed).ns/1e9, digits=1)) seconds since you pressed the button")
+			ig.Text("If you feel it has been too long, you'll need to restart the sepectra pro")
+			if isempty(UI.waiting_tasks)
+				ig.CloseCurrentPopup()
+			else
+				S, lastcmd = fetch(UI.waiting_tasks)
+				if occursin(r"nm"i, lastcmd)
+					setnm = match(r"\d+\.\d+", lastcmd).match |> x->parse(Float64, x)
+					ig.Text("Since you sent an 'nm' command, you can expect it to take")
+					ig.Text("about $(round(Int, abs(setnm-S.nm)/S.nmmin*60)) seconds for this to finish")
+				end
+			end
+			ig.EndPopup()
+		end
 	end
 	end
+end
+
+function tell_spectra_modal(cmd)
+	@debug "Spawing tell task"
+	Threads.@spawn tell_spectra(cmd)
+	UI.last_time_button_pressed = now()
+
+	while isempty(UI.waiting_tasks) yield()	end
+	@debug "Opening Popup"
+	ig.OpenPopup("Waiting for command to finish")
 end
 
 function sweepinputvals()

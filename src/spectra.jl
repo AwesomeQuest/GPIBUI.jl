@@ -17,12 +17,12 @@ function spectrastatusmonitor()
         selectedG = ask_spectra("GRATING")
         selectedT = ask_spectra("TURRET")
         try
-        nm = parse(Float64, nm)
-        nmmin = parse(Float64, nmmin)
-        nmjog = parse(Float64,  match(r"[\d\.\-]+", nmjog).match)
-        grating = parse(Int, selectedG)
-        turret = parse(Int, selectedT)
-        @atomic SPECTRA.status = SpectraStatus(true, nm, nmmin, nmjog, turret, grating)
+            nm = parse(Float64, nm)
+            nmmin = parse(Float64, nmmin)
+            nmjog = parse(Float64,  match(r"[\d\.\-]+", nmjog).match)
+            grating = parse(Int, selectedG)
+            turret = parse(Int, selectedT)
+            @atomic SPECTRA.status = SpectraStatus(true, nm, nmmin, nmjog, turret, grating)
         catch e
             @error e
         end
@@ -84,9 +84,11 @@ function tell_spectra(cmd)
         # Make sure the message finished sending
         @lock GPIB_LOCK yield()
         # Wait for the Spectra to finish executing the message
+        put!(UI.waiting_tasks, ((@atomic SPECTRA.status), cmd))
         while statusbyte(SPECTRA.gpib) == 0x00
             interuptsleep(millis(100), SPECTRA.kill, SPECTRA.config.sleep_interrupt_interval)
         end
+        take!(UI.waiting_tasks)
         return nothing
     end
 end
