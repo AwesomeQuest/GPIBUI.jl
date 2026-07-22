@@ -314,7 +314,7 @@ function monitorinputvals()
 		@c ig.InputDouble("Max Current [A]", &maxcurrent)
 		ig.PopItemWidth()
 
-		if !UI.processes.rt_active
+		if !UI.processes.rt_active[]
 			if !isempty(DATA.rt_times) && ig.Button("Resume", (250UI.WINSCALE, 40UI.WINSCALE))
 				@goto start_sweep
 			elseif isempty(DATA.rt_times) && ig.Button("Start", (250UI.WINSCALE, 40UI.WINSCALE))
