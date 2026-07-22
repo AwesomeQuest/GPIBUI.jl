@@ -6,6 +6,7 @@ include("args.jl")
 import CImGui as ig, ModernGL, GLFW
 import CImGui.CSyntax: @c, @cstatic
 import ImPlot
+include("settings.jl")
 
 include("BetterSleep.jl")
 using .BetterSleep
@@ -44,6 +45,27 @@ function (@main)(ARGS)
 	ig.set_backend(:GlfwOpenGL3)
 
 	ctx = ig.CreateContext()
+
+	# Create a settings handler for our custom settings
+	handler = ig.lib.ImGuiSettingsHandler(
+		pointer("GPIBUI"),
+		ig.ImHashStr("GPIBUI"),
+		C_NULL,  # ClearAllFn
+		C_NULL,  # ReadInitFn
+		@cfunction(my_read_open, Ptr{Cvoid},
+			(Ptr{ig.lib.ImGuiContext}, Ptr{ig.lib.ImGuiSettingsHandler}, Ptr{Cchar})),
+		@cfunction(my_read_line, Cvoid,
+			(Ptr{ig.lib.ImGuiContext}, Ptr{ig.lib.ImGuiSettingsHandler}, Ptr{Cvoid}, Ptr{Cchar})),
+		C_NULL,  # ApplyAllFn
+		@cfunction(my_write_all, Cvoid,
+			(Ptr{ig.lib.ImGuiContext}, Ptr{ig.lib.ImGuiSettingsHandler}, Ptr{ig.lib.ImGuiTextBuffer})),
+		C_NULL   # UserData
+	)
+
+	# Ref(handler) gives a Ptr{ImGuiSettingsHandler} for the C function
+	ig.AddSettingsHandler(Ref(handler))
+
+
 	io = ig.GetIO()
 	io.ConfigDpiScaleFonts = true
 	io.ConfigDpiScaleViewports = true
