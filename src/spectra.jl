@@ -7,14 +7,9 @@ global spectra_status::Threads.Atomic{UInt16} = Threads.Atomic{UInt16}(0)
 global spectra_sample_rate::Nano = millis(40)
 
 function initialize_spectra()
-    # Things to get NM, NM/MIN, NM/JOG, GRATING, TURRET, GRATINGS, TURRETS
-
-    nm = (ask_spectra("NM"))
-    nmmin = (ask_spectra("NM/MIN"))
-    nmjog = (ask_spectra("NM/JOG"))
-    selectedG = (ask_spectra("GRATING"))
-    selectedT = (ask_spectra("TURRET"))
+    @debug_once "Asking gratings"
     listG = split(ask_spectra("GRATINGS"), '\r', keepempty=false) .|> filter(isprint) .|> strip
+    @debug_once "Asking turrets"
     listT = split(ask_spectra("TURRETS"), '\r', keepempty=false) .|> filter(isprint) .|> strip
     filter!(!=(""), listT)
 
@@ -39,8 +34,9 @@ function spectramanager()
     global kill_manager
     while !kill_manager[]
         global Spectra
-        S = spectra_status[] = statusbyte(Spectra)
+        @debug_changed "Status byte is $S"
         if S & ERRBIT != 0
+            @debug "Found error"
             if S & RESBIT != 0
                 output = ""
                 @lock gpiblock output = read(Spectra)
@@ -49,6 +45,9 @@ function spectramanager()
                 @warn "The Spectra is indicating an error but not has nothing to read"
             end
         elseif S & RESBIT != 0
+            @debug "Reading from Spectra"
+            try
+            @debug "Sending command $(fetch(SPECTRA.input))"
             @lock gpiblock put!(spectra_output, read(Spectra))
         elseif S & CMDBIT != 0 && !isempty(spectra_input)
             @lock gpiblock write(Spectra, take!(spectra_input)*"\r")

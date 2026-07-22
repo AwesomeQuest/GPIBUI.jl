@@ -88,6 +88,8 @@ function (@main)(ARGS)
 	if parsed["debug"]
 		ENV["JULIA_DEBUG"] = GPIBUI
 	end
+
+	@debug "Start Main"
 	## Initialize CImGui
 	ig.set_backend(:GlfwOpenGL3)
 
@@ -107,7 +109,7 @@ function (@main)(ARGS)
 	@assert default_font != C_NULL
 	@assert fontawesome != C_NULL
 
-	# @info "Rendering"
+	@debug "Rendering"
 	ig.render(ctx; window_size=(100,100), window_title="Keithley 2470", on_exit=() -> ImPlot.DestroyContext(p_ctx)) do
 		global WINSCALE
 		global sidebarwidth
@@ -129,19 +131,19 @@ function (@main)(ARGS)
 				ig.ImGuiWindowFlags_NoCollapse )
 		end
 
-		# @info "menu"
+		@debug_once "Menu"
 		menubar()
 
 		ig.BeginGroup()
 
 		if ig.BeginTabBar("IV and RealTime", ig.ImGuiTabBarFlags_NoCloseWithMiddleMouseButton)
-			# @info "iv tab"
+			@debug_once "IV tab"
 			if ig.BeginTabItem("I-V Sweep")
 				ivtab()
 				ig.EndTabItem()
 			end
 			
-			# @info "rt tab"
+			@debug_once "RT tab"
 			if ig.BeginTabItem("Realtime Monitor")
 				rttab()
 				ig.EndTabItem()
@@ -151,7 +153,7 @@ function (@main)(ARGS)
 		
 		ig.EndGroup()
 		
-		# @info "logs"
+		@debug_once "Logs"
 		ig.SameLine()
 		logs()
 

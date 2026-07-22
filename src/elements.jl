@@ -84,12 +84,12 @@ end
 
 
 function ivtab()
-	# @info "inputs"
+	@debug_once "inputs"
 	ivinputs()
 	ig.SameLine()
 	ig.BeginGroup()
 	flagschecks()
-	# @info "plot"
+	@debug_once "plot"
 	@lock plotlock begin
 		simpleimplot(
 			"I-V Sweep",
@@ -108,7 +108,7 @@ function ivinputs()
 	global iv_volts
 	cleardatabutton(iv_times, iv_currs, iv_volts)
 	
-	# @info "table"
+	@debug_once "table"
 	ig.PushStyleVar(ig.lib.ImGuiStyleVar_CellPadding, (3,3))
 	global WINSCALE
 	if ig.BeginTable("iv_maxmin_table", 2, 0, (250WINSCALE,50WINSCALE))
@@ -129,10 +129,10 @@ function ivinputs()
 	global iv_volts
 	savedatabutton(iv_times, iv_currs, iv_volts)
 
-	# @info "inputvals"
+	@debug_once "inputvals"
 	sweepinputvals()
 
-	# @info "s´pectra"
+	@debug_once "spectra"
 	spectracontrols()
 
 	ig.EndGroup()
@@ -142,6 +142,7 @@ function spectracontrols()
 	@cstatic scan_speed	= Cdouble(100) curr_nm = Cdouble(0.0) begin
 	@cstatic jog_speed	= Cdouble(100) grating = Cint(-1) turret = Cint(-1) begin
 	@cstatic gratinglist::Vector{String} = String[] turretlist::Vector{String} = String[] begin
+		@debug_once "Init Spectra"
 		global is_connected
 		if grating == -1 && is_connected
 			nm, nmmin, nmjog, selectedG, selectedT, gratinglist, turretlist = initialize_spectra()
