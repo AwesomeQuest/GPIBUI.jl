@@ -12,6 +12,9 @@ function parse_commandline()
 					"performant and accurate to set this value high but " *
 					"it also means that you can't cancel a measurement " *
 					"in less than `sleep_interupt_time` milliseconds"
+		"--debug"
+			help = "Enables debug logging"
+			action = :store_true
 	end
 	parsed_args = parse_args(s) # the result is a Dict{String,Any}
 	# println("Parsed args:")

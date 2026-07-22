@@ -85,8 +85,9 @@ function (@main)(ARGS)
 		sleepii = parse(Int, parsed["sleep_interupt_time"])
 		sleep_interupt_interval = millis(sleepii)
 	end
-
-	
+	if parsed["debug"]
+		ENV["JULIA_DEBUG"] = GPIBUI
+	end
 	## Initialize CImGui
 	ig.set_backend(:GlfwOpenGL3)
 
