@@ -84,15 +84,27 @@ end
 	sidebarwidth::Float32			= 200.0
 	fontawesome::Ptr{ig.lib.ImFont}	= C_NULL
 	processes::Processes			= Processes()
+	last_time_button_pressed::Nano	= seconds(0)
+	waiting_tasks::Channel{Tuple{SpectraStatus, String}}	= Channel{Tuple{SpectraStatus, String}}(Inf)
 end
 
+# ═══════════════════════════════════════════
+# Found Instruments struct
+# ═══════════════════════════════════════════
 
+@kwdef mutable struct FoundInstrs
+	RM::Cuint								 = ResourceManager()
+	instruments::Vector{String} 			 = []
+	selected_keithley::Int32				 = 0
+	selected_spectra::Int32					 = 0
+	possible_keithley::Union{Int32, Nothing} = nothing
+	possible_spectra::Union{Int32, Nothing}	 = nothing
+end
 
 # ═══════════════════════════════════════════
 # Global singletons (module-level `const`)
 # ═══════════════════════════════════════════
 
-const RM = ResourceManager()
 const GPIB_LOCK = ReentrantLock()
 const PLOT_LOCK = ReentrantLock()
 const SLEEP_INTERRUPT_INTERVAL::Nano = millis(100)
@@ -107,6 +119,8 @@ global CONNECTED::Threads.Atomic{Bool} = Threads.Atomic{Bool}(false)
 const DATA = ExperimentData()
 
 const UI = UIConfig()
+
+const INSTRS = FoundInstrs()
 
 const KEITHLEY_TYPES = (
 	"MODEL 2400",
