@@ -16,13 +16,16 @@ function spectrastatusmonitor()
         nmjog = ask_spectra("NM/JOG")
         selectedG = ask_spectra("GRATING")
         selectedT = ask_spectra("TURRET")
-
+        try
         nm = parse(Float64, nm)
         nmmin = parse(Float64, nmmin)
         nmjog = parse(Float64,  match(r"[\d\.\-]+", nmjog).match)
         grating = parse(Int, selectedG)
         turret = parse(Int, selectedT)
         @atomic SPECTRA.status = SpectraStatus(true, nm, nmmin, nmjog, turret, grating)
+        catch e
+            @error e
+        end
 
         interuptsleep(SPECTRA.config.status_update_interval, SPECTRA.kill, SPECTRA.config.sleep_interrupt_interval)
     end
